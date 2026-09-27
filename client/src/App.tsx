@@ -7,6 +7,7 @@ import type {
   SimulatedPacket,
   TimelineEvent
 } from '../../shared/types';
+import { ScenarioBuilder } from './components/ScenarioBuilder';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3001';
 
@@ -24,6 +25,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeView, setActiveView] = useState<'overview' | 'hex'>('overview');
+  const [workbench, setWorkbench] = useState<'inspector' | 'builder'>('inspector');
 
   const availableScenarios = useMemo<PacketScenario[]>(
     () => (protocol === 'TCP' ? ['handshake', 'request', 'response'] : ['request', 'response']),
@@ -71,6 +73,15 @@ function App() {
     }
   };
 
+  const applyGenerated = (nextPacket: SimulatedPacket, raw: string, target: { protocol: Protocol; scenario: PacketScenario }) => {
+    setProtocol(target.protocol);
+    setScenario(target.scenario);
+    setPacket(nextPacket);
+    setRawInput(raw);
+    setWorkbench('inspector');
+    setError('');
+  };
+
   useEffect(() => {
     void loadSample('HTTP', 'request');
   }, []);
@@ -105,35 +116,46 @@ function App() {
           <div>
             <p className="section-kicker">解析工作台 · INSPECTOR</p>
             <h2>把每一个字节，<em>还原成可读的网络故事。</em></h2>
-            <p className="hero-subtitle">选择协议和场景，载入模拟流量，逐层查看字段、时间线与十六进制原始数据。</p>
+            <p className="hero-subtitle">选择协议和场景，载入模拟流量，逐层查看字段、时间线与十六进制原始数据；也可以用场景构建器结构化拼装自己的演示包。</p>
           </div>
           <div className="hero-stat"><strong>{packet?.metadata.length ?? '—'}</strong><span>BYTES<br />CURRENT FRAME</span></div>
         </section>
 
         <section className="control-panel panel">
           <div className="control-group">
-            <label>协议 <span>PROTOCOL</span></label>
+            <label>工作台 <span>WORKBENCH</span></label>
             <div className="segmented-control">
-              {(['HTTP', 'TCP'] as Protocol[]).map((item) => (
-                <button key={item} className={protocol === item ? 'active' : ''} onClick={() => changeProtocol(item)}>{item}</button>
-              ))}
+              <button className={workbench === 'inspector' ? 'active' : ''} onClick={() => setWorkbench('inspector')}>解析工作台</button>
+              <button className={workbench === 'builder' ? 'active' : ''} onClick={() => setWorkbench('builder')}>场景构建器</button>
             </div>
           </div>
-          <div className="control-group scenario-control">
-            <label>模拟场景 <span>SCENARIO</span></label>
-            <select value={scenario} onChange={(event) => changeScenario(event.target.value as PacketScenario)}>
-              {availableScenarios.map((item) => <option key={item} value={item}>{scenarioLabels[item]}</option>)}
-            </select>
-          </div>
-          <div className="control-actions">
-            <button className="button ghost" onClick={() => void loadSample()} disabled={loading}>↻ 载入模拟包</button>
-            <button className="button primary" onClick={() => void parsePacket()} disabled={loading || !rawInput.trim()}>{loading ? '处理中…' : '解析数据包 →'}</button>
-          </div>
+          {workbench === 'inspector' && <>
+            <div className="control-group">
+              <label>协议 <span>PROTOCOL</span></label>
+              <div className="segmented-control">
+                {(['HTTP', 'TCP'] as Protocol[]).map((item) => (
+                  <button key={item} className={protocol === item ? 'active' : ''} onClick={() => changeProtocol(item)}>{item}</button>
+                ))}
+              </div>
+            </div>
+            <div className="control-group scenario-control">
+              <label>模拟场景 <span>SCENARIO</span></label>
+              <select value={scenario} onChange={(event) => changeScenario(event.target.value as PacketScenario)}>
+                {availableScenarios.map((item) => <option key={item} value={item}>{scenarioLabels[item]}</option>)}
+              </select>
+            </div>
+            <div className="control-actions">
+              <button className="button ghost" onClick={() => void loadSample()} disabled={loading}>↻ 载入模拟包</button>
+              <button className="button primary" onClick={() => void parsePacket()} disabled={loading || !rawInput.trim()}>{loading ? '处理中…' : '解析数据包 →'}</button>
+            </div>
+          </>}
         </section>
 
         {error && <div className="error-banner">⚠ {error} <button onClick={() => setError('')}>关闭</button></div>}
 
-        <section className="workspace-grid">
+        {workbench === 'builder'
+          ? <ScenarioBuilder onApply={applyGenerated} onError={setError} />
+          : <section className="workspace-grid">
           <div className="left-column">
             <div className="panel packet-input-panel">
               <div className="panel-heading"><div><p className="section-kicker">01 / INPUT STREAM</p><h3>数据包输入</h3></div><span className="badge">{protocol}</span></div>
@@ -162,7 +184,7 @@ function App() {
               {activeView === 'overview' ? <FieldTree fields={packet?.fields ?? []} /> : <HexView rows={packet?.hex ?? []} />}
             </div>
           </div>
-        </section>
+        </section>}
       </main>
       <footer className="footer"><span>PACKET LAB / EDUCATIONAL SIMULATOR</span><span>React + Vite + TypeScript · Express API</span></footer>
     </div>

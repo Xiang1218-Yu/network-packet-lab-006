@@ -1,13 +1,18 @@
 import express, { type Request, type Response } from 'express';
 import type {
+  BuilderResult,
   HexRow,
   PacketScenario,
   ParseRequest,
   Protocol,
   ProtocolField,
+  SaveTemplateRequest,
   SimulatedPacket,
-  TimelineEvent
+  TimelineEvent,
+  UpdateTemplateRequest
 } from '../shared/types.js';
+import { validateBuilderInput } from './scenarioBuilder.js';
+import { deleteTemplate, listTemplates, saveTemplate, updateTemplate } from './templateStore.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3001);
@@ -180,6 +185,57 @@ app.post('/api/parse', (request: Request<unknown, unknown, Partial<ParseRequest>
   const raw = typeof request.body?.raw === 'string' ? request.body.raw : '';
   if (!raw.trim()) return response.status(400).json({ error: 'raw is required' });
   response.json({ data: buildPacket(protocol, scenario, raw) });
+});
+
+/* ------------------------------------------------------------------ */
+/* Scenario builder                                                   */
+/* ------------------------------------------------------------------ */
+
+app.post('/api/builder/generate', (request: Request<unknown, unknown, unknown>, response: Response) => {
+  const validated = validateBuilderInput(request.body);
+  const base: { protocol: Protocol; scenario: PacketScenario } =
+    typeof request.body === 'object' && request.body !== null &&
+    (request.body as { protocol?: unknown }).protocol === 'TCP'
+      ? { protocol: 'TCP', scenario: ((request.body as { scenario?: unknown }).scenario as PacketScenario) ?? 'handshake' }
+      : { protocol: 'HTTP', scenario: ((request.body as { scenario?: unknown }).scenario as PacketScenario) ?? 'request' };
+
+  // Errors block packet generation; warnings come back together with a usable packet.
+  if (!validated.raw) {
+    return response.status(422).json({ error: 'builder validation failed', issues: validated.issues });
+  }
+  const data: BuilderResult = {
+    raw: validated.raw,
+    packet: buildPacket(base.protocol, base.scenario, validated.raw),
+    issues: validated.issues
+  };
+  response.json({ data });
+});
+
+app.get('/api/templates', (request, response) => {
+  const protocol = isProtocol(request.query.protocol) ? request.query.protocol : undefined;
+  response.json({ data: listTemplates(protocol) });
+});
+
+app.post('/api/templates', (request: Request<unknown, unknown, Partial<SaveTemplateRequest>>, response: Response) => {
+  const result = saveTemplate(request.body?.name, request.body?.input);
+  if (result.error) {
+    return response.status(result.status ?? 400).json({ error: result.error, issues: result.issues });
+  }
+  response.status(201).json({ data: result.template, issues: result.issues });
+});
+
+app.put('/api/templates/:id', (request: Request<{ id: string }, unknown, Partial<UpdateTemplateRequest>>, response: Response) => {
+  const result = updateTemplate(request.params.id, { name: request.body?.name, input: request.body?.input });
+  if (result.error) {
+    return response.status(result.status ?? 400).json({ error: result.error, issues: result.issues });
+  }
+  response.json({ data: result.template, issues: result.issues });
+});
+
+app.delete('/api/templates/:id', (request: Request<{ id: string }>, response: Response) => {
+  const result = deleteTemplate(request.params.id);
+  if (result.error) return response.status(result.status ?? 400).json({ error: result.error });
+  response.json({ data: result.templates });
 });
 
 app.listen(port, () => {
