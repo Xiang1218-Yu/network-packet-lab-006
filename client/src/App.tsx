@@ -7,6 +7,7 @@ import type {
   SimulatedPacket,
   TimelineEvent
 } from '../../shared/types';
+import { BuilderPanel } from './BuilderPanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3001';
 
@@ -24,6 +25,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeView, setActiveView] = useState<'overview' | 'hex'>('overview');
+  const [mode, setMode] = useState<'inspector' | 'builder'>('inspector');
 
   const availableScenarios = useMemo<PacketScenario[]>(
     () => (protocol === 'TCP' ? ['handshake', 'request', 'response'] : ['request', 'response']),
@@ -87,6 +89,14 @@ function App() {
     void loadSample(protocol, nextScenario);
   };
 
+  const inspectBuiltPacket = (nextPacket: SimulatedPacket, raw: string) => {
+    setPacket(nextPacket);
+    setRawInput(raw);
+    setProtocol(nextPacket.protocol);
+    setScenario(nextPacket.scenario);
+    setMode('inspector');
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -110,6 +120,14 @@ function App() {
           <div className="hero-stat"><strong>{packet?.metadata.length ?? '—'}</strong><span>BYTES<br />CURRENT FRAME</span></div>
         </section>
 
+        <div className="mode-tabs" role="tablist">
+          <button role="tab" className={mode === 'inspector' ? 'active' : ''} onClick={() => setMode('inspector')}>解析工作台</button>
+          <button role="tab" className={mode === 'builder' ? 'active' : ''} onClick={() => setMode('builder')}>场景构建器 <i>NEW</i></button>
+        </div>
+
+        {mode === 'builder' && <BuilderPanel onInspect={inspectBuiltPacket} />}
+
+        {mode === 'inspector' && (<>
         <section className="control-panel panel">
           <div className="control-group">
             <label>协议 <span>PROTOCOL</span></label>
@@ -163,6 +181,7 @@ function App() {
             </div>
           </div>
         </section>
+        </>)}
       </main>
       <footer className="footer"><span>PACKET LAB / EDUCATIONAL SIMULATOR</span><span>React + Vite + TypeScript · Express API</span></footer>
     </div>
